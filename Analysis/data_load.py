@@ -33,6 +33,7 @@ def process(world, country, type):
     months_fmt = mdates.DateFormatter('%m/%d')
 
     os.makedirs('Results', exist_ok=True)
+    os.makedirs('Figures', exist_ok=True)
 
     #NY = gauss_model(config, 34.38, 47588, 39.03)
     #print(NY)
@@ -49,14 +50,15 @@ def process(world, country, type):
         column_names = pd.to_datetime(df_c.columns[4:], format='%m/%d/%y')
     else:      # US data
         if type == "confirmed":
-            df = pd.read_csv("../Data/COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_US.csv")
             offset = 0
         else:
-            df = pd.read_csv("../Data/COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_US.csv")
             offset=1
-        column_names = pd.to_datetime(df.columns[11+offset:], format='%m/%d/%y')
+        df_c = pd.read_csv("../Data/COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_US.csv")
+        df_d = pd.read_csv("../Data/COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_US.csv")
 
-    rows, columns = df.shape
+        column_names = pd.to_datetime(df_c.columns[11+offset:], format='%m/%d/%y')
+
+    rows, columns = df_c.shape
     dates = np.array([column_names[0] + np.timedelta64(i, 'D')
                       for i in range(length+1)])
 
@@ -72,13 +74,13 @@ def process(world, country, type):
         if isinstance(country, list):
             countryList = country
         elif country == 'ALL':
-            countryList = df['Country/Region'].unique()
+            countryList = df_c['Country/Region'].unique()
         else:
             countryList = [country]
         keyword = 'Country/Region'
         startIndex = 2
     else:
-        countryList = df['Province_State'].unique()
+        countryList = df_c['Province_State'].unique()
         countryList = np.append(countryList, "US ACCUM")
         keyword = 'Province_State'
         startIndex = 5+offset
@@ -115,8 +117,8 @@ def process(world, country, type):
             df_c_d = df_d[(df_d[keyword] == c)]
             #for v in df_c.values:
             #    print(v)
-            df_c = df_c_c.groupby(keyword).sum()
-            df_d = df_c_d.groupby(keyword).sum()
+            df_c_c = df_c_c.groupby(keyword).sum()
+            df_c_d = df_c_d.groupby(keyword).sum()
             #print(df_c.values)
             #print(df_d.values)
             #print(df['Country/Region'].sum())
@@ -124,8 +126,8 @@ def process(world, country, type):
             #print(df_c.values[0])
 
 
-            data_c = np.insert(df_c.values[0][startIndex:].astype(float), 0, 0)
-            data_d = np.insert(df_d.values[0][startIndex:].astype(float), 0, 0)
+            data_c = np.insert(df_c_c.values[0][startIndex:].astype(float), 0, 0)
+            data_d = np.insert(df_c_d.values[0][startIndex:].astype(float), 0, 0)
             print(data_c, data_c.size)
             print(data_d, data_d.size)
 
@@ -174,17 +176,17 @@ def process(world, country, type):
 
         if c!='US ACCUM':
             #ax.bar(column_names, data, width=1, color='orange')
-            plt.fill_between(column_names, y1=data, y2=0, alpha=0.5, linewidth=2, color='orange')
+            plt.fill_between(column_names, y1=data_c, y2=0, alpha=0.5, linewidth=2, color='orange')
             plt.plot_date(dates,curve,'-', label=predicted_label,linestyle='solid')
-            plt.plot_date(dates[:len(data)],data,'-', label=data_label,linestyle='solid')
-            #plt.plot_date(dates[:len(data)], ma, '-', label='MA', linestyle='solid')
+            plt.plot_date(dates[:len(data_c)],data_c,'-', label=data_label,linestyle='solid')
+            #plt.plot_date(dates[:len(data_c)], ma, '-', label='MA', linestyle='solid')
             #plt.plot_date(dates[:len(data2)], data2, '-', label="second-order", linestyle='solid')
-            plt.axvline(dates[len(data)-1],0,1, label=r'Present', linestyle='dashed')
+            plt.axvline(dates[len(data_c)-1],0,1, label=r'Present', linestyle='dashed')
             plt.axvline(dates[int(round(position))],0,1,label=r'Peak', linestyle='dashed', color='r')
             plt.text(dates[1], max_val * 0.6,
                      '- Total Predicted: ' + locale.format("%d", int(curve.sum()), grouping=True))
             plt.text(dates[1], max_val * 0.55,
-                     '- Total Confirmed: ' + locale.format("%d", int(data.sum()), grouping=True))
+                     '- Total Confirmed: ' + locale.format("%d", int(data_c.sum()), grouping=True))
         else:
             #ax.bar(column_names, totalData, width=1, color='orange')
             plt.fill_between(column_names, y1=totalData, y2=0, alpha=0.5, linewidth=2, color='orange')
@@ -205,7 +207,7 @@ def process(world, country, type):
         plt.setp(plt.gca().xaxis.get_majorticklabels(),'rotation', 90)
         plt.gca().xaxis.set_major_locator(mdates.DayLocator(interval=7))
 
-        plt.title(c + "  " + dates[len(data)-1].strftime("%m/%d/%Y"))
+        plt.title(c + "  " + dates[len(data_c)-1].strftime("%m/%d/%Y"))
         plt.legend()
 
         #fig.autofmt_xdate()
