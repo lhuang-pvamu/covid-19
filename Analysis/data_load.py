@@ -18,6 +18,8 @@ from ts_analysis import *
 
 pd.set_option('display.max_columns', 500)
 locale.setlocale(locale.LC_ALL, 'en_US')
+plt.rc('legend',fontsize=8) # using a size in points
+plt.rc('font',size=8)
 
 def process(world, country, type):
 
@@ -48,11 +50,9 @@ def process(world, country, type):
         #else:
         df_d = pd.read_csv("../Data/COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv")
         column_names = pd.to_datetime(df_c.columns[4:], format='%m/%d/%y')
+        offset = 0
     else:      # US data
-        if type == "confirmed":
-            offset = 0
-        else:
-            offset=1
+        offset=1
         df_c = pd.read_csv("../Data/COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_US.csv")
         df_d = pd.read_csv("../Data/COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_US.csv")
 
@@ -93,8 +93,10 @@ def process(world, country, type):
     out = csv.writer(open("Results/prediction.csv", "w"), delimiter=',')
     #out.write('Country')
     out.writerow(new_column_names)
-    totalData = np.zeros(column_names.size)
-    totalPred = np.zeros(dates.size)
+    totalData_c = np.zeros(column_names.size)
+    totalPred_c = np.zeros(dates.size)
+    totalData_d = np.zeros(column_names.size)
+    totalPred_d = np.zeros(dates.size)
 
     if type == "confirmed":
         predicted_label = 'Predicted Daily New Cases'
@@ -127,13 +129,15 @@ def process(world, country, type):
 
 
             data_c = np.insert(df_c_c.values[0][startIndex:].astype(float), 0, 0)
-            data_d = np.insert(df_c_d.values[0][startIndex:].astype(float), 0, 0)
+            data_d = np.insert(df_c_d.values[0][startIndex+offset:].astype(float), 0, 0)
             print(data_c, data_c.size)
             print(data_d, data_d.size)
 
             #print(len(data))
             data_c = np.diff(data_c)
             data_d = np.diff(data_d)
+            print("Daily New Case:", data_c)
+            print("Daily Deaths:", data_d)
             #detrend(data)
             #ar(data)
             #arima(data)
@@ -148,24 +152,31 @@ def process(world, country, type):
             #print(datemin, datemax)
 
             #print(torch.from_numpy(data).size())
-            curve,position,amp,span = fit(torch.from_numpy(data_c).double(), config, dist='gaussian')
+            curve_c,position_c,amp_c,span_c,curve_d,position_d,amp_d,span_d = fit(torch.from_numpy(data_c).double(), torch.from_numpy(data_d).double(), config, dist='gaussian')
             #futures.append([curve,position,amp,span])
-            if (math.isnan(position) or math.isnan(amp) or math.isnan(span)):
+            if (math.isnan(position_c) or math.isnan(amp_c) or math.isnan(span_c) or \
+                math.isnan(position_d) or math.isnan(amp_d) or math.isnan(span_d)):
                 continue
 
-            totalData += data_c
-            totalPred += curve
+            totalData_c += data_c
+            totalPred_c += curve_c
+            totalData_d += data_d
+            totalPred_d += curve_d
 
-            if (position > curve.size):
-                print(c, " position is out of bound: ", position)
-                position = curve.size-1
+            if (position_c > curve_c.size):
+                print(c, " position is out of bound: ", position_c)
+                position_c = curve_c.size-1
 
-            print(position, amp, span)
+            if (position_d > curve_d.size):
+                print(c, " position is out of bound: ", position_d)
+                position_d = curve_d.size - 1
 
-            max_val = max(curve.max(), data_c.max())
+            print(position_c, amp_c, span_c, position_d, amp_d, span_d)
+
+            max_val = max(curve_c.max(), data_c.max())
         else:
-            max_val = max(totalPred.max(), totalData.max())
-            ma = convolve_sma(totalData, 5)
+            max_val = max(totalPred_c.max(), totalData_c.max())
+            ma = convolve_sma(totalData_c, 5)
 
 
         fig, ax = plt.subplots()
@@ -176,32 +187,50 @@ def process(world, country, type):
 
         if c!='US ACCUM':
             #ax.bar(column_names, data, width=1, color='orange')
+
             plt.fill_between(column_names, y1=data_c, y2=0, alpha=0.5, linewidth=2, color='orange')
-            plt.plot_date(dates,curve,'-', label=predicted_label,linestyle='solid')
+            plt.fill_between(column_names, y1=data_d, y2=0, alpha=0.5, linewidth=2, color='black')
+            plt.plot_date(dates,curve_c,'-', label=predicted_label,linestyle='solid')
             plt.plot_date(dates[:len(data_c)],data_c,'-', label=data_label,linestyle='solid')
+            plt.plot_date(dates,curve_d,'-', label='Predicted Daily Deaths',linestyle='solid', color='black')
+            plt.plot_date(dates[:len(data_d)],data_d,'-', label='Confirmed Daily Deaths',linestyle='solid', color='red')
             #plt.plot_date(dates[:len(data_c)], ma, '-', label='MA', linestyle='solid')
             #plt.plot_date(dates[:len(data2)], data2, '-', label="second-order", linestyle='solid')
             plt.axvline(dates[len(data_c)-1],0,1, label=r'Present', linestyle='dashed')
-            plt.axvline(dates[int(round(position))],0,1,label=r'Peak', linestyle='dashed', color='r')
+            plt.axvline(dates[int(round(position_c))],0,1,label=r'Peak', linestyle='dashed', color='r')
+            plt.axvline(dates[int(round(position_d))],0,1,label=r'Death Peak', linestyle='dashed', color='purple')
             plt.text(dates[1], max_val * 0.6,
-                     '- Total Predicted: ' + locale.format("%d", int(curve.sum()), grouping=True))
+                     '- Total Predicted: ' + locale.format("%d", int(curve_c.sum()), grouping=True))
             plt.text(dates[1], max_val * 0.55,
                      '- Total Confirmed: ' + locale.format("%d", int(data_c.sum()), grouping=True))
+            plt.text(dates[1], max_val * 0.5,
+                     '- Total Pred Deaths: ' + locale.format("%d", int(curve_d.sum()), grouping=True))
+            plt.text(dates[1], max_val * 0.45,
+                     '- Total Conf Deaths: ' + locale.format("%d", int(data_d.sum()), grouping=True))
+            #plt.legend(loc=1, fontsize=6)
         else:
             #ax.bar(column_names, totalData, width=1, color='orange')
-            plt.fill_between(column_names, y1=totalData, y2=0, alpha=0.5, linewidth=2, color='orange')
-            plt.plot_date(dates,totalPred,'-', label=predicted_label,linestyle='solid')
-            plt.plot_date(dates[:len(totalData)],totalData,'-', label=data_label,linestyle='solid')
+            plt.fill_between(column_names, y1=totalData_c, y2=0, alpha=0.5, linewidth=2, color='orange')
+            plt.fill_between(column_names, y1=totalData_d, y2=0, alpha=0.5, linewidth=2, color='black')
+            plt.plot_date(dates,totalPred_c,'-', label=predicted_label,linestyle='solid')
+            plt.plot_date(dates[:len(totalData_c)],totalData_c,'-', label=data_label,linestyle='solid')
+            plt.plot_date(dates,totalPred_d,'-', label='Predicted Daily Deaths',linestyle='solid', color='black')
+            plt.plot_date(dates[:len(totalData_d)],totalData_d,'-', label='Confirmed Daily Deaths',linestyle='solid', color='red')
             #plt.plot_date(dates[:len(totalData)], ma, '-', label='MA', linestyle='solid')
-            totalData2 = np.insert(totalData, 0, 0)
+            totalData2 = np.insert(totalData_c, 0, 0)
             totalData2 = np.diff(totalData2)
             #plt.plot_date(dates[:len(totalData2)], totalData2, '-', label="second-order", linestyle='solid')
-            plt.axvline(dates[len(totalData)-1],0,1, label=r'Present', linestyle='dashed')
-            plt.axvline(dates[np.argmax(totalPred)],0,1,label=r'Peak', linestyle='dashed', color='r')
+            plt.axvline(dates[len(totalData_c)-1],0,1, label=r'Present', linestyle='dashed', color='green')
+            plt.axvline(dates[np.argmax(totalPred_c)],0,1,label=r'Peak', linestyle='dashed', color='r')
+            plt.axvline(dates[np.argmax(totalPred_d)],0,1,label=r'Death Peak', linestyle='dashed', color='purple')
             plt.text(dates[1], max_val * 0.6,
-                     '- Total Predicted: ' + locale.format("%d", int(totalPred.sum()), grouping=True))
+                     '- Total Predicted: ' + locale.format("%d", int(totalPred_c.sum()), grouping=True))
             plt.text(dates[1], max_val * 0.55,
-                     '- Total Confirmed: ' + locale.format("%d", int(totalData.sum()), grouping=True))
+                     '- Total Confirmed: ' + locale.format("%d", int(totalData_c.sum()), grouping=True))
+            plt.text(dates[1], max_val * 0.5,
+                     '- Total Pred Deaths: ' + locale.format("%d", int(totalPred_d.sum()), grouping=True))
+            plt.text(dates[1], max_val * 0.45,
+                     '- Total Conf Deaths: ' + locale.format("%d", int(totalData_d.sum()), grouping=True))
 
 
         plt.setp(plt.gca().xaxis.get_majorticklabels(),'rotation', 90)
@@ -215,17 +244,25 @@ def process(world, country, type):
         plt.close()
 
         if c!='US ACCUM':
-            result_list = curve.astype(int).tolist()
-            result_list.append(int(curve.sum()))
+            result_list = curve_c.astype(int).tolist()
+            result_list.append(int(curve_c.sum()))
             result_list.insert(0, c)
         else:
-            result_list = totalData.astype(int).tolist()
-            result_list.append(int(totalData.sum()))
+            result_list = totalData_c.astype(int).tolist()
+            result_list.append(int(totalData_c.sum()))
             result_list.insert(0, 'Total Data')
             out.writerow(result_list)
-            result_list = totalPred.astype(int).tolist()
-            result_list.append(int(totalPred.sum()))
+            result_list = totalPred_c.astype(int).tolist()
+            result_list.append(int(totalPred_c.sum()))
             result_list.insert(0, 'Total Pred')
+            out.writerow(result_list)
+            result_list = totalData_d.astype(int).tolist()
+            result_list.append(int(totalData_d.sum()))
+            result_list.insert(0, 'Total Deaths')
+            out.writerow(result_list)
+            result_list = totalPred_d.astype(int).tolist()
+            result_list.append(int(totalPred_d.sum()))
+            result_list.insert(0, 'Total Pred Deaths')
         out.writerow(result_list)
 
 
@@ -240,7 +277,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-w','--world', action='store_true')
     parser.set_defaults(world=False)
-    parser.add_argument('-t', '--type', type=str, default="deaths")
+    parser.add_argument('-t', '--type', type=str, default="confirmed")
     parser.add_argument('-l','--countrylist', type=list, default=country_list)
 
     args = parser.parse_args()

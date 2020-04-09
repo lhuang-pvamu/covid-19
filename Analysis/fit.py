@@ -81,57 +81,65 @@ def exp_model(config, amp, a, b):
 
     return dC
 
-def distance_from_target(data, target):
-    return torch.mean((target - data)**2) + ((torch.sum(data) - torch.sum(target))**2)/float(len(data))
+def distance_from_target(data_c, target_c, data_d, target_d, pos_c, pos_d, span_c, span_d):
+    return torch.mean((target_c - data_c)**2) + torch.mean((target_d - data_d)**2) +  \
+            torch.abs((pos_d - pos_c) -7.0) * 100.0 + torch.abs((span_d - span_c)) * 100.0 + \
+            ((torch.sum(data_c) - torch.sum(target_c)) / float(len(data_c))) ** 2 + \
+            ((torch.sum(data_d) - torch.sum(target_d)) / float(len(data_d))) ** 2
 
 
-def fit(C, config, dist='gaussian'):
+
+def fit(C, D, config, dist='gaussian'):
     _EPOCHS = 50000
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     #US: 35, 110000, 68
     #New York: 34.32, 47593, 39.11
     #Texas: 32.66, 1080, 43.87
     #Diff: 29, 12000, 47
-    print(torch.max(C))
-    position = Variable(torch.FloatTensor([50.0]), requires_grad=True)
+    #print(torch.max(C))
+    position_c = Variable(torch.FloatTensor([50.0]).double(), requires_grad=True)
     #amp = Variable(torch.FloatTensor([10000.0]), requires_grad=True)
-    amp = Variable(torch.max(C), requires_grad=True)
-    span = Variable(torch.FloatTensor([100.0]), requires_grad=True)
+    amp_c = Variable(torch.max(C).double(), requires_grad=True)
+    span_c = Variable(torch.FloatTensor([100.0]).double(), requires_grad=True)
+    position_d = Variable(torch.FloatTensor([60.0]).double(), requires_grad=True)
+    amp_d = Variable(torch.max(D.double()), requires_grad=True)
+    span_d = Variable(torch.FloatTensor([100.0]).double(), requires_grad=True)
     mu = Variable(torch.FloatTensor([0.1]).double(), requires_grad=True)
     k = Variable(torch.FloatTensor([0.1]).double(), requires_grad=True)
-    print(position,amp)
+    print(position_c,amp_c,position_d,amp_d)
 
-    learning = 1.0
+    learning = 0.1
     #criterion = nn.MSELoss()
     if dist == "gaussian":
-        optimizer = torch.optim.Adam([position,amp, span], lr=learning, weight_decay=1e-5)
+        optimizer = torch.optim.Adam([position_c,amp_c,span_c,position_d,amp_d,span_d], lr=learning, weight_decay=1e-5)
     elif dist == 'exp':
-        optimizer = torch.optim.Adam([amp, mu, k], lr=learning, weight_decay=1e-5)
+        optimizer = torch.optim.Adam([amp_c, mu, k], lr=learning, weight_decay=1e-5)
     else:
-        optimizer = torch.optim.Adam([mu, amp], lr=learning, weight_decay=1e-5)
+        optimizer = torch.optim.Adam([mu, amp_c], lr=learning, weight_decay=1e-5)
     #lambda2 = lambda epoch: learning * (0.99 ** epoch)
     #scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=[lambda2])
 
     for i in range(_EPOCHS):
         if dist == "gaussian":
-            C0 = gauss_model(config, position, amp, span)
+            C0 = gauss_model(config, position_c, amp_c, span_c)
+            D0 = gauss_model(config, position_d, amp_d, span_d)
         elif dist == "poisson":
-            C0 = poisson_model(config, mu, amp)
+            C0 = poisson_model(config, mu, amp_c)
         elif dist == 'exp':
-            C0 = exp_model(config, amp, mu, k)
+            C0 = exp_model(config, amp_c, mu, k)
         else:
-            C0 = erlang_model(config, mu, k, amp)
+            C0 = erlang_model(config, mu, k, amp_c)
         optimizer.zero_grad()
         #print(C0[0:len(C)])
         #loss = criterion(C0[0:C.size(0)], C)
-        loss = distance_from_target(C0[0:C.size(0)], C)
+        loss = distance_from_target(C0[0:C.size(0)], C, D0[0:D.size(0)], D, position_c, position_d, span_c, span_d)
         loss.backward()
         optimizer.step()
         #scheduler.step(i)
 
-        if i%10000 == 0:
+        if i%5000 == 0:
             if dist == 'gaussian':
-                print(i, loss, position, amp, span)
+                print(i, loss.data.cpu().numpy(), position_c.data.cpu().numpy(), amp_c.data.cpu().numpy(), span_c.data.cpu().numpy(), position_d.data.cpu().numpy(), amp_d.data.cpu().numpy(), span_d.data.cpu().numpy())
             else:
                 print(i, mu, k)
             xs = np.arange(config['nx']) * config['dx']
@@ -142,15 +150,18 @@ def fit(C, config, dist='gaussian'):
             #plt.subplot(2, 1, 2)
             plt.plot(xs, C0.detach().numpy(), label=r'$Prediction$')
             plt.plot(C, label=r'$Confirmed$')
+            plt.plot(xs, D0.detach().numpy(), label=r'$Prediction$')
+            plt.plot(D, label=r'$Deaths$')
             plt.legend()
             plt.savefig('Figures/model'+str(i)+'.png')
             plt.close()
-    return C0.detach().numpy(), position.detach().numpy()[0],amp.detach().numpy(),span.detach().numpy()[0]
+    return C0.detach().numpy(), position_c.detach().numpy()[0],amp_c.detach().numpy(),span_c.detach().numpy()[0], \
+    D0.detach().numpy(), position_d.detach().numpy()[0],amp_d.detach().numpy(),span_d.detach().numpy()[0]
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     config = dict()
-    length = 100
+    length = 10000
     config['x_limits'] = [0, length]
     config['nx'] = length+1
     config['dx'] = (config['x_limits'][1] - config['x_limits'][0]) / (config['nx'] - 1)
