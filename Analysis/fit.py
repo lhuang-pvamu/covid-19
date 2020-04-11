@@ -85,7 +85,8 @@ def distance_from_target(data_c, target_c, data_d, target_d, pos_c, pos_d, span_
     return torch.mean((target_c - data_c)**2) + torch.mean((target_d - data_d)**2) +  \
             torch.abs((pos_d - pos_c) -7.0) * 100.0 + torch.abs((span_d - span_c)) * 100.0 + \
             ((torch.sum(data_c) - torch.sum(target_c)) / float(len(data_c))) ** 2 + \
-            ((torch.sum(data_d) - torch.sum(target_d)) / float(len(data_d))) ** 2
+            ((torch.sum(data_d) - torch.sum(target_d)) / float(len(data_d))) ** 2 + \
+            ((torch.sum(target_c)*0.035 - torch.sum(target_d)) ** 2)
 
 
 

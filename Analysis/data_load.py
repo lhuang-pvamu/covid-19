@@ -20,6 +20,29 @@ pd.set_option('display.max_columns', 500)
 locale.setlocale(locale.LC_ALL, 'en_US')
 plt.rc('legend',fontsize=8) # using a size in points
 plt.rc('font',size=8)
+length = 130
+
+
+def loadData(world):
+    if world:  # global data
+        df_c = pd.read_csv("../Data/COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv")
+        df_d = pd.read_csv("../Data/COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv")
+        df_r = pd.read_csv("../Data/COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_recovered_global.csv")
+        column_names = pd.to_datetime(df_c.columns[4:], format='%m/%d/%y')
+        offset = 0
+        startIndex = 2
+        keyword = 'Country/Region'
+    else:      # US data
+        df_c = pd.read_csv("../Data/COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_US.csv")
+        df_d = pd.read_csv("../Data/COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_US.csv")
+        df_r = pd.read_csv("../Data/COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_recovered_global.csv")
+        column_names = pd.to_datetime(df_c.columns[11:], format='%m/%d/%y')
+        keyword = 'Province_State'
+        offset = 1
+        startIndex = 5
+
+    return df_c, df_d, df_r, column_names, keyword, startIndex, offset
+
 
 def process(world, country, type):
 
@@ -44,19 +67,7 @@ def process(world, country, type):
     #print(US)
 
     #df = pd.read_csv("../csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Confirmed.csv")
-    if world:  # global data
-        #if type == "confirmed":
-        df_c = pd.read_csv("../Data/COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv")
-        #else:
-        df_d = pd.read_csv("../Data/COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv")
-        column_names = pd.to_datetime(df_c.columns[4:], format='%m/%d/%y')
-        offset = 0
-    else:      # US data
-        offset=1
-        df_c = pd.read_csv("../Data/COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_US.csv")
-        df_d = pd.read_csv("../Data/COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_US.csv")
-
-        column_names = pd.to_datetime(df_c.columns[11+offset:], format='%m/%d/%y')
+    df_c, df_d, df_r, column_names, keyword, startIndex, offset = loadData(world)
 
     rows, columns = df_c.shape
     dates = np.array([column_names[0] + np.timedelta64(i, 'D')
@@ -77,15 +88,14 @@ def process(world, country, type):
             countryList = df_c['Country/Region'].unique()
         else:
             countryList = [country]
-        keyword = 'Country/Region'
-        startIndex = 2
+        #keyword = 'Country/Region'
+        #startIndex = 2
     else:
         countryList = df_c['Province_State'].unique()
         countryList = np.append(countryList, "US ACCUM")
-        keyword = 'Province_State'
-        startIndex = 5+offset
+        #keyword = 'Province_State'
+        #startIndex = 5+offset
 
-    import matplotlib.cbook as cbook
     new_column_names = [keyword]
     for date in dates:
         new_column_names.append(date.strftime('%m-%d'))
@@ -105,9 +115,6 @@ def process(world, country, type):
         predicted_label = 'Predicted Daily Deaths'
         data_label = 'Confirmed Daily Deaths'
 
-
-    futures = []
-
     for c in countryList:
         print("=============== ", c, " =============")
         if c == 'Recovered':
@@ -120,6 +127,9 @@ def process(world, country, type):
             #for v in df_c.values:
             #    print(v)
             df_c_c = df_c_c.groupby(keyword).sum()
+            if df_c_c.values[0][startIndex:].max() < 500:
+                print('----- skip ---- ', c)
+                continue
             df_c_d = df_c_d.groupby(keyword).sum()
             #print(df_c.values)
             #print(df_d.values)
@@ -200,13 +210,13 @@ def process(world, country, type):
             plt.axvline(dates[int(round(position_c))],0,1,label=r'Peak', linestyle='dashed', color='r')
             plt.axvline(dates[int(round(position_d))],0,1,label=r'Death Peak', linestyle='dashed', color='purple')
             plt.text(dates[1], max_val * 0.6,
-                     '- Total Predicted: ' + locale.format("%d", int(curve_c.sum()), grouping=True))
+                     '- Total Predicted: ' + locale.format_string("%d", int(curve_c.sum()), grouping=True))
             plt.text(dates[1], max_val * 0.55,
-                     '- Total Confirmed: ' + locale.format("%d", int(data_c.sum()), grouping=True))
+                     '- Total Confirmed: ' + locale.format_string("%d", int(data_c.sum()), grouping=True))
             plt.text(dates[1], max_val * 0.5,
-                     '- Total Pred Deaths: ' + locale.format("%d", int(curve_d.sum()), grouping=True))
+                     '- Total Pred Deaths: ' + locale.format_string("%d", int(curve_d.sum()), grouping=True))
             plt.text(dates[1], max_val * 0.45,
-                     '- Total Conf Deaths: ' + locale.format("%d", int(data_d.sum()), grouping=True))
+                     '- Total Conf Deaths: ' + locale.format_string("%d", int(data_d.sum()), grouping=True))
             #plt.legend(loc=1, fontsize=6)
         else:
             #ax.bar(column_names, totalData, width=1, color='orange')
@@ -224,13 +234,13 @@ def process(world, country, type):
             plt.axvline(dates[np.argmax(totalPred_c)],0,1,label=r'Peak', linestyle='dashed', color='r')
             plt.axvline(dates[np.argmax(totalPred_d)],0,1,label=r'Death Peak', linestyle='dashed', color='purple')
             plt.text(dates[1], max_val * 0.6,
-                     '- Total Predicted: ' + locale.format("%d", int(totalPred_c.sum()), grouping=True))
+                     '- Total Predicted: ' + locale.format_string("%d", int(totalPred_c.sum()), grouping=True))
             plt.text(dates[1], max_val * 0.55,
-                     '- Total Confirmed: ' + locale.format("%d", int(totalData_c.sum()), grouping=True))
+                     '- Total Confirmed: ' + locale.format_string("%d", int(totalData_c.sum()), grouping=True))
             plt.text(dates[1], max_val * 0.5,
-                     '- Total Pred Deaths: ' + locale.format("%d", int(totalPred_d.sum()), grouping=True))
+                     '- Total Pred Deaths: ' + locale.format_string("%d", int(totalPred_d.sum()), grouping=True))
             plt.text(dates[1], max_val * 0.45,
-                     '- Total Conf Deaths: ' + locale.format("%d", int(totalData_d.sum()), grouping=True))
+                     '- Total Conf Deaths: ' + locale.format_string("%d", int(totalData_d.sum()), grouping=True))
 
 
         plt.setp(plt.gca().xaxis.get_majorticklabels(),'rotation', 90)
