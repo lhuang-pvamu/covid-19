@@ -26,6 +26,8 @@ def gauss_model(config, positions, amp, span):
     #C = torch.ones(nx).float()
 
     dC = amp.double()*torch.exp(-((xs-positions.double())**2)/span.double())
+    #dC = amp.double() * torch.exp(-((xs - positions.double()) ** 2) / (2.0 * span.double())) / torch.sqrt(2.0 * math.pi * (span))
+    #dC = amp.double()*torch.exp(-((xs-positions.double())**2)/(2.0*span.double()**2)) / torch.sqrt(2.0*math.pi*(span**2))
     dC[torch.where(abs(dC) < 1e-7)] = 0
 
     #C = C + dC
