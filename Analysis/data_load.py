@@ -16,6 +16,7 @@ import os
 from dask import delayed
 from ts_analysis import *
 from infect_model import *
+from plot_data import *
 
 pd.set_option('display.max_columns', 500)
 locale.setlocale(locale.LC_ALL, 'en_US')
@@ -84,6 +85,9 @@ def loadData(world, country=['US'], Daily=True):
             if data_r is not None:
                 data_r = np.insert(data_r, 0, 0)
                 data_r = np.diff(data_r)
+                data_r[np.where(data_r < 0)] = 0
+            data_c[np.where(data_c < 0)] = 0
+            data_d[np.where(data_d < 0)] = 0
 
         confirmed[c] = data_c
         death[c] = data_d
@@ -167,7 +171,7 @@ def process(world, country, model):
 
         if c != 'US ACCUM':
             #print(data_c[c])
-            if data_c[c].max() < 100:
+            if data_c[c].max() < 10:
                 print('----- skip ---- ', c)
                 continue
 
@@ -193,9 +197,10 @@ def process(world, country, model):
 
             #print(torch.from_numpy(data).size())
             if model == "SEIR":
-                pred_c, pred_c, pred_r = fit_SEIR(torch.from_numpy(data_c[c]).double(), torch.from_numpy(data_d[c]).double(),
+                pred_s, pred_c, pred_r, pred_d = fit_SEIR(torch.from_numpy(data_c[c]).double(), torch.from_numpy(data_d[c]).double(),
                                                   torch.from_numpy(data_r[c]).double(), 329466283, config)
-                return
+                plot_seir(dates, c, data_c, data_d, pred_c, pred_r, pred_d)
+                continue
             if world:
                 curve_c, position_c, amp_c, span_c, curve_d, position_d, amp_d, span_d = fit(
                     torch.from_numpy(data_c[c]).double(), torch.from_numpy(data_d[c]).double(), config, dist='gaussian')
@@ -228,9 +233,9 @@ def process(world, country, model):
 
 
         fig, ax = plt.subplots()
-        #ax.xaxis.set_major_locator(months)
-        #ax.xaxis.set_major_formatter(months_fmt)
-        #ax.xaxis.set_minor_locator(days)
+        ax.xaxis.set_major_locator(months)
+        ax.xaxis.set_major_formatter(months_fmt)
+        ax.xaxis.set_minor_locator(days)
         ax.set_xlim(datemin, datemax)
 
         if c!='US ACCUM':
@@ -238,8 +243,8 @@ def process(world, country, model):
 
             plt.fill_between(column_names, y1=data_c[c], y2=0, alpha=0.5, linewidth=2, color='orange')
             plt.fill_between(column_names, y1=data_d[c], y2=0, alpha=0.5, linewidth=2, color='black')
-            plt.plot_date(dates,curve_c,'-', label=predicted_label,linestyle='solid')
-            plt.plot_date(dates[:len(data_c[c])],data_c[c],'-', label=data_label,linestyle='solid')
+            plt.plot_date(dates,curve_c, '-', label=predicted_label, linestyle='solid')
+            plt.plot_date(dates[:len(data_c[c])],data_c[c], '-', label=data_label, linestyle='solid')
             plt.plot_date(dates,curve_d,'-', label='Predicted Daily Deaths',linestyle='solid', color='black')
             plt.plot_date(dates[:len(data_d[c])],data_d[c],'-', label='Confirmed Daily Deaths',linestyle='solid', color='red')
             #plt.plot_date(dates[:len(data_c)], ma, '-', label='MA', linestyle='solid')
@@ -321,13 +326,14 @@ if __name__ == '__main__':
              'Belgium', 'Brazil', 'Denmark', 'Czechia', 'Finland', 'Netherlands',
              'Austria', 'Greece', 'Hungary', 'Ireland', 'Israel', 'Malaysia',
              'Mexico', 'Norway', 'Portugal', 'Poland', 'Romania', 'Russia',
-             'Saudi Arabia', 'Turkey']
+             'Saudi Arabia', 'Turkey', 'India']
+    #country_list = ['Korea, South', 'US', 'Denmark', 'Taiwan*']
     parser = argparse.ArgumentParser()
     parser.add_argument('-w','--world', action='store_true')
     parser.set_defaults(world=True)
     parser.add_argument('-t', '--type', type=str, default="confirmed")
     parser.add_argument('-l','--countrylist', type=list, default=country_list)
-    parser.add_argument('-m', '--model', type=str, default="gaussian")
+    parser.add_argument('-m', '--model', type=str, default="SEIR")
 
     args = parser.parse_args()
 

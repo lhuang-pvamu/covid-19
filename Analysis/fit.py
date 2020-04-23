@@ -84,12 +84,11 @@ def exp_model(config, amp, a, b):
     return dC
 
 def distance_from_target(data_c, target_c, data_d, target_d, pos_c, pos_d, span_c, span_d):
-    return torch.mean((target_c - data_c)**2) + torch.mean((target_d - data_d)**2) +  \
-            torch.abs((pos_d - pos_c) -7.0) * 100.0 + torch.abs((span_d - span_c)) * 100.0 + \
+    return torch.mean((target_c - data_c)**2) + torch.mean((target_d - data_d)**2) + \
+            torch.abs((pos_d - pos_c) - 5.0) * 100.0 + torch.abs((span_d - span_c)) * 100.0 + \
             ((torch.sum(data_c) - torch.sum(target_c)) / float(len(data_c))) ** 2 + \
             ((torch.sum(data_d) - torch.sum(target_d)) / float(len(data_d))) ** 2 + \
-            ((torch.sum(target_c)*0.035 - torch.sum(target_d)) ** 2)
-
+            ((torch.sum(target_c)*0.035 - torch.sum(target_d)) ** 2) * 100.0
 
 
 def fit(C, D, config, dist='gaussian'):
@@ -100,13 +99,23 @@ def fit(C, D, config, dist='gaussian'):
     #Texas: 32.66, 1080, 43.87
     #Diff: 29, 12000, 47
     #print(torch.max(C))
+    top5_c = torch.topk(C, 5).values
+    top5_c = torch.sum(top5_c)/5.0
+    top5_d = torch.topk(D, 5).values
+    top5_d = torch.sum(top5_d)/5.0
+    print("top 5:",top5_c, top5_d)
     position_c = Variable(torch.FloatTensor([50.0]).double(), requires_grad=True)
-    #amp = Variable(torch.FloatTensor([10000.0]), requires_grad=True)
-    amp_c = Variable(torch.max(C).double(), requires_grad=True)
+    amp_c = Variable(top5_c.double(), requires_grad=True)
     span_c = Variable(torch.FloatTensor([100.0]).double(), requires_grad=True)
+    position_c1 = Variable(torch.FloatTensor([50.0]).double(), requires_grad=True)
+    amp_c1 = Variable((top5_c/2.0).double(), requires_grad=True)
+    span_c1 = Variable(torch.FloatTensor([100.0]).double(), requires_grad=True)
     position_d = Variable(torch.FloatTensor([60.0]).double(), requires_grad=True)
-    amp_d = Variable(torch.max(D.double()), requires_grad=True)
+    amp_d = Variable(top5_d.double(), requires_grad=True)
     span_d = Variable(torch.FloatTensor([100.0]).double(), requires_grad=True)
+    position_d1 = Variable(torch.FloatTensor([60.0]).double(), requires_grad=True)
+    amp_d1 = Variable((top5_d/2.0).double(), requires_grad=True)
+    span_d1 = Variable(torch.FloatTensor([100.0]).double(), requires_grad=True)
     mu = Variable(torch.FloatTensor([0.1]).double(), requires_grad=True)
     k = Variable(torch.FloatTensor([0.1]).double(), requires_grad=True)
     print(position_c,amp_c,position_d,amp_d)
@@ -114,6 +123,7 @@ def fit(C, D, config, dist='gaussian'):
     learning = 0.1
     #criterion = nn.MSELoss()
     if dist == "gaussian":
+        #optimizer = torch.optim.Adam([position_c,amp_c,span_c,position_c1,amp_c1,span_c1,position_d,amp_d,span_d,position_d1,amp_d1,span_d1], lr=learning, weight_decay=1e-5)
         optimizer = torch.optim.Adam([position_c,amp_c,span_c,position_d,amp_d,span_d], lr=learning, weight_decay=1e-5)
     elif dist == 'exp':
         optimizer = torch.optim.Adam([amp_c, mu, k], lr=learning, weight_decay=1e-5)
@@ -125,7 +135,9 @@ def fit(C, D, config, dist='gaussian'):
     for i in range(_EPOCHS):
         if dist == "gaussian":
             C0 = gauss_model(config, position_c, amp_c, span_c)
+            #C1 = gauss_model(config, position_c1, amp_c1, span_c1)
             D0 = gauss_model(config, position_d, amp_d, span_d)
+            #D1 = gauss_model(config, position_d1, amp_d1, span_d1)
         elif dist == "poisson":
             C0 = poisson_model(config, mu, amp_c)
         elif dist == 'exp':
@@ -135,6 +147,8 @@ def fit(C, D, config, dist='gaussian'):
         optimizer.zero_grad()
         #print(C0[0:len(C)])
         #loss = criterion(C0[0:C.size(0)], C)
+        #C2 = C0+C1
+        #D2 = D0+D1
         loss = distance_from_target(C0[0:C.size(0)], C, D0[0:D.size(0)], D, position_c, position_d, span_c, span_d)
         loss.backward()
         optimizer.step()
@@ -143,6 +157,7 @@ def fit(C, D, config, dist='gaussian'):
         if i%5000 == 0:
             if dist == 'gaussian':
                 print(i, loss.data.cpu().numpy(), position_c.data.cpu().numpy(), amp_c.data.cpu().numpy(), span_c.data.cpu().numpy(), position_d.data.cpu().numpy(), amp_d.data.cpu().numpy(), span_d.data.cpu().numpy())
+                #print(i, loss.data.cpu().numpy(), position_c1.data.cpu().numpy(), amp_c1.data.cpu().numpy(), span_c1.data.cpu().numpy(), position_d1.data.cpu().numpy(), amp_d1.data.cpu().numpy(), span_d1.data.cpu().numpy())
             else:
                 print(i, mu, k)
             xs = np.arange(config['nx']) * config['dx']
