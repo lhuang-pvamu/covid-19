@@ -17,6 +17,8 @@ from dask import delayed
 from ts_analysis import *
 from infect_model import *
 from plot_data import *
+from daily_report import *
+from glob import glob
 
 pd.set_option('display.max_columns', 500)
 locale.setlocale(locale.LC_ALL, 'en_US')
@@ -164,7 +166,14 @@ def process(world, country, model):
     predicted_label = 'Predicted Daily New Cases'
     data_label = 'Confirmed Daily New Cases'
 
+    testing_dates, Incident_rate, Testing_rate, Confirmed, Tested = loadDailyReports()
+    #C = np.insert(Confirmed['New York'], 0, 0)
 
+
+    SC = sum(Confirmed.values())
+    SC = np.diff(SC)
+    ST = sum(Tested.values())
+    ST = np.diff(ST)
 
     for c in countryList:
         print("=============== ", c, " =============")
@@ -231,70 +240,30 @@ def process(world, country, model):
             max_val = max(totalPred_c.max(), totalData_c.max())
             ma = convolve_sma(totalData_c, 5)
 
+        if world == False or c == 'US':
+            if c == 'US ACCUM' or c == 'US':
+                plot_US(dates, datemin, datemax, column_names, c, testing_dates, (SC / ST).astype(float), totalPred_c,
+                        totalData_c,
+                        totalPred_d, totalData_d, np.argmax(totalPred_c),
+                        np.argmax(totalPred_d), max_val, predicted_label, data_label)
+            else:
+                try:
+                    C = np.diff(Confirmed[c])
+                    T = np.diff(Tested[c])
+                    positive_rate = (C / T).astype(float)
+                    print(positive_rate)
+                except:
+                    continue
+                for i in range(positive_rate.size):
+                    if np.isinf(positive_rate[i]) or np.isnan(positive_rate[i]) or positive_rate[i]>1.0:
+                        positive_rate[i] = 0.0
 
-        fig, ax = plt.subplots()
-        ax.xaxis.set_major_locator(months)
-        ax.xaxis.set_major_formatter(months_fmt)
-        ax.xaxis.set_minor_locator(days)
-        ax.set_xlim(datemin, datemax)
-
-        if c!='US ACCUM':
-            #ax.bar(column_names, data, width=1, color='orange')
-
-            plt.fill_between(column_names, y1=data_c[c], y2=0, alpha=0.5, linewidth=2, color='orange')
-            plt.fill_between(column_names, y1=data_d[c], y2=0, alpha=0.5, linewidth=2, color='black')
-            plt.plot_date(dates,curve_c, '-', label=predicted_label, linestyle='solid')
-            plt.plot_date(dates[:len(data_c[c])],data_c[c], '-', label=data_label, linestyle='solid')
-            plt.plot_date(dates,curve_d,'-', label='Predicted Daily Deaths',linestyle='solid', color='black')
-            plt.plot_date(dates[:len(data_d[c])],data_d[c],'-', label='Confirmed Daily Deaths',linestyle='solid', color='red')
-            #plt.plot_date(dates[:len(data_c)], ma, '-', label='MA', linestyle='solid')
-            #plt.plot_date(dates[:len(data2)], data2, '-', label="second-order", linestyle='solid')
-            plt.axvline(dates[len(data_c[c])-1],0,1, label=r'Present', linestyle='dashed')
-            plt.axvline(dates[int(round(position_c))],0,1,label=r'Peak', linestyle='dashed', color='r')
-            plt.axvline(dates[int(round(position_d))],0,1,label=r'Death Peak', linestyle='dashed', color='purple')
-            plt.text(dates[1], max_val * 0.6,
-                     '- Total Predicted: ' + locale.format_string("%d", int(curve_c.sum()), grouping=True))
-            plt.text(dates[1], max_val * 0.55,
-                     '- Total Confirmed: ' + locale.format_string("%d", int(data_c[c].sum()), grouping=True))
-            plt.text(dates[1], max_val * 0.5,
-                     '- Total Pred Deaths: ' + locale.format_string("%d", int(curve_d.sum()), grouping=True))
-            plt.text(dates[1], max_val * 0.45,
-                     '- Total Conf Deaths: ' + locale.format_string("%d", int(data_d[c].sum()), grouping=True))
-            #plt.legend(loc=1, fontsize=6)
+                plot_US(dates, datemin, datemax, column_names, c, testing_dates, positive_rate, curve_c,
+                        data_c[c], curve_d, data_d[c], position_c,
+                        position_d, max_val, predicted_label, data_label)
         else:
-            #ax.bar(column_names, totalData, width=1, color='orange')
-            plt.fill_between(column_names, y1=totalData_c, y2=0, alpha=0.5, linewidth=2, color='orange')
-            plt.fill_between(column_names, y1=totalData_d, y2=0, alpha=0.5, linewidth=2, color='black')
-            plt.plot_date(dates,totalPred_c,'-', label=predicted_label,linestyle='solid')
-            plt.plot_date(dates[:len(totalData_c)],totalData_c,'-', label=data_label,linestyle='solid')
-            plt.plot_date(dates,totalPred_d,'-', label='Predicted Daily Deaths',linestyle='solid', color='black')
-            plt.plot_date(dates[:len(totalData_d)],totalData_d,'-', label='Confirmed Daily Deaths',linestyle='solid', color='red')
-            #plt.plot_date(dates[:len(totalData)], ma, '-', label='MA', linestyle='solid')
-            totalData2 = np.insert(totalData_c, 0, 0)
-            totalData2 = np.diff(totalData2)
-            #plt.plot_date(dates[:len(totalData2)], totalData2, '-', label="second-order", linestyle='solid')
-            plt.axvline(dates[len(totalData_c)-1],0,1, label=r'Present', linestyle='dashed', color='green')
-            plt.axvline(dates[np.argmax(totalPred_c)],0,1,label=r'Peak', linestyle='dashed', color='r')
-            plt.axvline(dates[np.argmax(totalPred_d)],0,1,label=r'Death Peak', linestyle='dashed', color='purple')
-            plt.text(dates[1], max_val * 0.6,
-                     '- Total Predicted: ' + locale.format_string("%d", int(totalPred_c.sum()), grouping=True))
-            plt.text(dates[1], max_val * 0.55,
-                     '- Total Confirmed: ' + locale.format_string("%d", int(totalData_c.sum()), grouping=True))
-            plt.text(dates[1], max_val * 0.5,
-                     '- Total Pred Deaths: ' + locale.format_string("%d", int(totalPred_d.sum()), grouping=True))
-            plt.text(dates[1], max_val * 0.45,
-                     '- Total Conf Deaths: ' + locale.format_string("%d", int(totalData_d.sum()), grouping=True))
-
-
-        plt.setp(plt.gca().xaxis.get_majorticklabels(),'rotation', 90)
-        plt.gca().xaxis.set_major_locator(mdates.DayLocator(interval=7))
-
-        plt.title(c + "  " + dates[column_names.size-1].strftime("%m/%d/%Y"))
-        plt.legend()
-
-        #fig.autofmt_xdate()
-        plt.savefig('Results/' + c + '_new_cases.png')
-        plt.close()
+            plot_country(dates, datemin, datemax, column_names, c, curve_c, data_c[c], curve_d, data_d[c], position_c,
+                    position_d, max_val, predicted_label, data_label)
 
         if c!='US ACCUM':
             result_list = curve_c.astype(int).tolist()
@@ -330,10 +299,10 @@ if __name__ == '__main__':
     #country_list = ['Korea, South', 'US', 'Denmark', 'Taiwan*']
     parser = argparse.ArgumentParser()
     parser.add_argument('-w','--world', action='store_true')
-    parser.set_defaults(world=True)
+    parser.set_defaults(world=False)
     parser.add_argument('-t', '--type', type=str, default="confirmed")
     parser.add_argument('-l','--countrylist', type=list, default=country_list)
-    parser.add_argument('-m', '--model', type=str, default="SEIR")
+    parser.add_argument('-m', '--model', type=str, default="gaussian")
 
     args = parser.parse_args()
 
