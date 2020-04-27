@@ -35,11 +35,11 @@ We use the Johns Hopkins github dataset for the work. Go to the Data directory a
     
 ##### 4.2 Run the prediction for worldwide:
 
-    python data_load.py -w
+    python process.py -w
     
 ##### 4.2 Run the prediction for US:
 
-    python data_load.py
+    python process.py
     
 #### 5) Check the prediction:
 
